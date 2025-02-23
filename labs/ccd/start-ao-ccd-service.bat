@@ -42,8 +42,8 @@ docker run -d ^
     --platform linux/amd64 ^
     --network=bridge ^
     --name aoservice ^
-    -e lof_service_client_id="" ^
-    -e lof_service_client_secret="" ^
+    -e lof_service_client_id="lCWr5j2HWABraOMNVZdaHTuXgdNaK4zX2QuSozIWYuI" ^
+    -e lof_service_client_secret="daNemt4RTSRpP83boYJkvZ5msjddznehOAtkpVLjKUUIC5avv5ec3OVhGecZTbrW" ^
     -e POSTGRES_HOST="172.17.0.1" ^
     -e POSTGRES_PORT="5432" ^
     -e POSTGRES_DB="aodb" ^
@@ -67,8 +67,8 @@ docker run -d ^
     --platform linux/amd64 ^
     --network=bridge ^
     --name ccdservice ^
-    -e client_id="" ^
-    -e client_secret="" ^
+    -e client_id="lCWr5j2HWABraOMNVZdaHTuXgdNaK4zX2QuSozIWYuI" ^
+    -e client_secret="daNemt4RTSRpP83boYJkvZ5msjddznehOAtkpVLjKUUIC5avv5ec3OVhGecZTbrW" ^
     -e BASE_URL=http://127.0.0.1:8000/api/ ^
     -p 4200:80 ^
     rcpu/lof-services:ccdservice

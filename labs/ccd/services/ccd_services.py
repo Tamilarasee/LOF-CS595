@@ -10,7 +10,7 @@ class CCDServices:
             "Content-Type": "application/json"
         }
         response = requests.post(BASE_URL + '/patient/registration/', json=patient_info, headers=headers)
-        print("Patient registration status code : ", response.status_code)
+        print("Patient registration status code : ", response.status_code, response.text)
         return response.json()
 
     def get_auth_token(self):

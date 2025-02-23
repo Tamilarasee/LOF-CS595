@@ -10,12 +10,12 @@
         "gender": "male",
         "ehr_code": "1b7aca64e07d9a4b8ea0ff22",
         "user_profile": {
-            "address": "112 D Grove St, Poplar Grove, IL 61065",
+            "address": "112 D Grove St, Poplar Grove, IL, 61065",
             "phone": "1234567890",
             "preferred_alert_mode": "Email",
             "secondary_alert_mode": "Email"
         },
-        "mrn": ""
+        "mrn": "915"
     },
     "3e7aca64fa952e7abc670566": {
         "username": "angiroftec",
@@ -28,11 +28,11 @@
         "gender": "female",
         "ehr_code": "3e7aca64fa952e7abc670566",
         "user_profile": {
-            "address": "10 D Pd St, Poplar Grove, IL 61043",
+            "address": "10 D Pd St, Poplar Grove, IL, 61043",
             "phone": "1234567890",
             "preferred_alert_mode": "Email",
             "secondary_alert_mode": "Email"
         },
-        "mrn": ""
+        "mrn": "916"
     }
 }

@@ -42,6 +42,7 @@ class HealthGorillaETLPipeline():
         return patientDict
 
     def retrieve_patient_from_hg(self, patient):
+      
         """
         TODO: Instructions for implementing this function:
         
@@ -77,7 +78,43 @@ class HealthGorillaETLPipeline():
            - If total > 1: return first entry (multiple matches)
            - Print appropriate message for each case
         """
+        first_name = patient['First Name']
+        last_name = patient['Last Name']
+        birth_month, birth_date, birth_year = patient['DOB'].split('/')
 
+        if int(birth_date) < 10:
+             birth_date = '0' + birth_date
+        if int(birth_month) < 10:
+             birth_month= '0' + birth_month
+
+        DOB = birth_year + '-' + birth_month + '-' + birth_date
+
+        Health_Gorilla_API_URL = BASE_URL + f'/Patient?given={first_name}&family={last_name}&birthdate={DOB}'
+        bearer_token = HealthGorillaTokenService().get_bearer_token()
+        REQ_HEADERS = {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + bearer_token
+        }
+
+        response = requests.get(Health_Gorilla_API_URL, headers=REQ_HEADERS)
+        if response.status_code == 200:
+          results = response.json()['entry']
+          if len(results) == 0:
+              print('No Matches')
+              return {}
+          if len(results) == 1:
+              print('Exact Match!')
+              return results[0]
+          if len(results)>1:
+              print('Multiple Matches')
+              return results[0]
+        return response.status_code,response.json()['error']
+        
+            
+            
+    
+    
+        
 
     def transform_hg_to_ccd(self, hg_data):
         """
@@ -118,19 +155,31 @@ class HealthGorillaETLPipeline():
              * dummy phone
              * email alert preferences
         """
-
+        resource = hg_data['resource']
+        for identifier in resource['identifier']:
+            if identifier['type']['coding'][0]['code'] == 'MR': 
+                ehr_code = identifier['value']
+                #taking the first MR incase of many
+                break
+        first_name = resource['name'][0]['given'][0] 
+        last_name = resource['name'][0]['family']
+        username = (first_name + last_name).lower()
+        email = f'{username}@example.com'
+        address = resource['address'][0]
+        full_address = f"{address.get('line', [''])[0]}, {address.get('city', '')}, {address.get('state', '')}, {address.get('postalCode', '')}"
+        birthdate = f"{resource.get('birthDate', '')}T00:00:00Z"
         ao_json = {
-            "username": "",
-            "email": "",
-            "first_name": "",
-            "last_name": "",
+            "username": username,
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
             "password1": "Password123!",  # Dummy password
             "password2": "Password123!",  # Dummy password
-            "dob": "",
-            "gender": "",
-            "ehr_code": "",
+            "dob": birthdate,
+            "gender": resource.get('gender', ''),
+            "ehr_code": ehr_code,
             "user_profile": {
-                "address": "",
+                "address": full_address,
                 "phone": "1234567890",  # Dummy phone number
                 "preferred_alert_mode": "Email",
                 "secondary_alert_mode": "Email"
@@ -146,8 +195,10 @@ class HealthGorillaETLPipeline():
         for patient in patient_list:
             # Retrieve patient details from HealthGorilla
             patient_details = self.retrieve_patient_from_hg(patient_list[patient])
+            #print(patient_details)
             ccd_patient_json = self.transform_hg_to_ccd(patient_details)
             ccd_patient_json['mrn'] = ''
+            print(ccd_patient_json)
             ccd_patient = self.ccd_service.register_patient(ccd_patient_json)
             patients_json[patient_details['resource']['id']] = ccd_patient_json
 
@@ -184,6 +235,30 @@ class HealthGorillaETLPipeline():
         Returns:
             dict: JSON response with conditions data or error message
         """
+        Health_Gorilla_API_URL = BASE_URL + "/Condition"
+        param = {"patient": hg_patient_id}
+
+        try:
+            bearer_token = HealthGorillaTokenService().get_bearer_token()
+            REQ_HEADERS = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {bearer_token}"
+            }
+            
+            response = requests.get(Health_Gorilla_API_URL, headers=REQ_HEADERS, params=param)
+            response.raise_for_status()  
+            
+            return response.json() 
+
+        except requests.exceptions.HTTPError as http_err:
+            return {"error": f"HTTP error occurred: {http_err}", "status_code": response.status_code}
+        
+        except requests.exceptions.RequestException as req_err:
+            return {"error": f"Request error: {req_err}"}
+        
+        except Exception as err:
+            return {"error": f"Unexpected error: {err}"}
+
 
 
     def get_codeable_concept(self, system, code, display):
@@ -256,16 +331,62 @@ class HealthGorillaETLPipeline():
            - Use condition.create() to post to server
            - Return response
         """
+        cond_data = hg_condition.get('resource', {})   
+
         condition = Condition()
+        condition.clinicalStatus = self.get_codeable_concept(
+        system="http://terminology.hl7.org/CodeSystem/condition-clinical",
+        code="Active",
+        display="Active"
+         )
+        condition.verificationStatus = self.get_codeable_concept(
+            system="http://terminology.hl7.org/CodeSystem/condition-ver-status",
+            code="confirmed",
+            display="Confirmed"
+        )
 
-        # Post the Condition resource to the FHIR server
-        response = condition.create(smart.server)
-        return response
+        if 'extension' in cond_data:
+            condition.extension = []
+            for ext in cond_data['extension']:
+                extension_obj = Extension()
+                extension_obj.url = ext.get('url')
+                if 'valueReference' in ext:
+                    extension_obj.valueReference = FHIRReference()
+                    extension_obj.valueReference.reference = ext['valueReference'].get('reference')
+                condition.extension.append(extension_obj)
 
+        condition.category = [self.get_codeable_concept(
+            system="http://terminology.hl7.org/CodeSystem/condition-category",
+            code="problem-list-item",
+            display="Problem List Item"
+        )]
+
+        if 'code' in cond_data:
+            condition.code = self.get_codes(cond_data)
+
+        if 'subject' in cond_data:
+            condition.subject = FHIRReference()
+            condition.subject.reference = f"Patient/{mrn}"  # Linking to patient MRN
+            condition.subject.display = cond_data['subject'].get('display', '')
+        
+        if 'onsetDateTime' in cond_data:
+            condition.onsetDateTime = FHIRDateTime(cond_data['onsetDateTime'])
+           
+        if 'assertedDate' in cond_data:
+            condition.assertedDate = FHIRDateTime(cond_data['assertedDate'])            
+            # Post the Condition resource to the FHIR server
+        try:
+            response = condition.create(smart.server)
+            return response.as_json()
+        except Exception as e:
+            return {"error": f"Failed to create condition: {repr(e)}"}
 
     def create_condition(self, hg_patient_id, mrn):
         hg_conditions = self.retrieve_conditions_from_hg(hg_patient_id)
         for hg_condition in hg_conditions['entry']:
+            #print('conditions - ' ,hg_condition)
+            #break
+
             try:
                 self.create_ccd_condition(hg_condition, mrn)
             except Exception as e:
@@ -280,18 +401,19 @@ if __name__ == '__main__':
     hg_etl_pipeline = HealthGorillaETLPipeline()
 
     # Step 1: Create Patients
-    # hg_etl_pipeline.create_patients()
+    #hg_etl_pipeline.create_patients()
+
 
     # Step 2: Open patients.json and Update MRN
 
     # Step 3 : Populate Conditions
-    # with open('patients.json', 'r') as pf:
-    #     patients_json = json.load(pf)
+    with open('patients.json', 'r') as pf:
+         patients_json = json.load(pf)
     #
-    # for patient in patients_json:
-    #     condition_response = hg_etl_pipeline.create_condition(hg_patient_id=patient,
-    #                                                           mrn=patients_json[patient]['mrn'])
+    for patient in patients_json:
+         condition_response = hg_etl_pipeline.create_condition(hg_patient_id=patient,
+                                                               mrn=patients_json[patient]['mrn'])
 
     # Delete the patient by MRN
-    # hg_etl_pipeline.delete_patient_from_ccd(mrn='2361')
-    # hg_etl_pipeline.delete_patient_from_ccd(mrn='2362')
+    # hg_etl_pipeline.delete_patient_from_ccd(mrn='252')
+    # hg_etl_pipeline.delete_patient_from_ccd(mrn='253')
