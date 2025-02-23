@@ -48,4 +48,5 @@ class HealthGorillaTokenService:
 
 if __name__ == '__main__':
     token = HealthGorillaTokenService().get_bearer_token()
+    print(token)
     print('LoF Services verified successfully')
