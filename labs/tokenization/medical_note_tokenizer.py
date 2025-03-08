@@ -10,13 +10,24 @@ import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), './../..')))
+# It ensures that Python can find and import modules that are located two directories up (./../..) 
+# from the current script's directory.
 from labs.tokenization.constants import TOKEN_PROMPT
 from lof.services import IMONLPService
 
 MAX_CHARS = 10000
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 #Update your openrouter key
-OPENROUTER_API_KEY = ""
+OPENROUTER_API_KEY = "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"
+
+#Python's @dataclass decorator is used to create a class that mainly stores data, without writing boilerplate code manually.
+#Automatically generates a constructor (__init__) so you don’t have to write:
+# def __init__(self, text, semantic_type, codes, source, assertion):
+#     self.text = text
+#     self.semantic_type = semantic_type
+#     self.codes = codes
+#     self.source = source
+#     self.assertion = assertion
 
 @dataclass
 class TokenizationResult:
@@ -56,7 +67,27 @@ def process_entity_codes(entity: Dict, source: str) -> TokenizationResult:
     """
     codes = {}
 
+    
     # Your implementation here
+
+    # Check if the entity has codemaps
+    if 'codemaps' in entity and entity['codemaps']:
+        for system, code_data in entity['codemaps'].items():
+            # Check if the coding system is IMO and the source is IMO
+            if system == 'imo' and source == 'IMO':
+                if 'lexical_code' in code_data:
+                    codes[system] = code_data['lexical_code']  # Use lexical_code if available
+            else:
+                # Proceed only if the codes array exists and is not empty
+                if 'codes' in code_data and code_data['codes']:
+                    # Use rxnorm_code if available (Drug domain)
+                    if entity['semantic'] == "drug":
+                        codes[system] = code_data['codes'][0].get('rxnorm_code', None)
+                    else:
+                        # Use the generic code field for other domains
+                        codes[system] = code_data['codes'][0].get('code', None)
+
+
 
     return TokenizationResult(
         text=entity['text'],
@@ -67,6 +98,10 @@ def process_entity_codes(entity: Dict, source: str) -> TokenizationResult:
     )
 
 
+#In Python, an abstract class is a blueprint for other classes. It cannot be instantiated directly 
+# and ensures that derived classes must implement certain methods. Inherits from ABC() Abstract Base Class)
+#@abstractmethod forces subclasses to implement the tokenize method.
+#This guarantees that all tokenizers return a list of TokenizationResult objects.
 class BaseTokenizer(ABC):
     @abstractmethod
     def tokenize(self, text: str) -> List[TokenizationResult]:
@@ -118,6 +153,7 @@ class IMOTokenizer(BaseTokenizer):
             for entity in data['entities']:
                 if entity['semantic'] not in entities_to_consider:
                     continue
+                #print(entity)
                 results.append(process_entity_codes(entity, 'IMO'))
             return results
         except Exception as e:
@@ -152,20 +188,37 @@ def display_comparison(openrouter_results: List[TokenizationResult], imo_results
     
     # Add OpenRouter results
     for result in openrouter_results:
-        # Your implementation code here
-        pass
+            if result.codes:
+                results_by_text[result.text.upper()] = {
+                    'OpenRouter': result
+                }
+        
 
     # Add IMO results and semantic type
     for result in imo_results:
-        # Your implementation code here
-        pass
+        if result.codes and result.semantic_type:
+            text_key = result.text.upper()
+            if text_key in results_by_text:
+                results_by_text[text_key]['IMO'] = result
+            else:
+                results_by_text[text_key] = {
+                    'IMO': result                        
+                }
+        
 
     # Create combined table
     combined_table = []
-    for result_data in results_by_text.values():
-        # Your implementation code here
-        pass
-
+    for text, entry in results_by_text.items():
+        #print(entry)
+        combined_entry = {
+            'Text': text,
+            'Semantic Type': entry['IMO'].semantic_type if 'IMO' in entry else None,
+            'OpenRouter Codes': format_codes_with_assertion('OpenRouter', entry),
+            'IMO Codes': format_codes_with_assertion('IMO', entry)
+        }
+        
+        # Append to combined table
+        combined_table.append(combined_entry)
     st.dataframe(combined_table, use_container_width=True)
 
 

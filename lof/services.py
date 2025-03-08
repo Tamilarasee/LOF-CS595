@@ -14,6 +14,7 @@ BASE_HEADERS = {
 
 
 def get_lof_auth_token():
+    #Use the client details to get the Lof token
     lof_credentials = {
         "client_id": os.getenv('client_id'),
         "client_secret": os.getenv('client_secret')
@@ -25,6 +26,7 @@ def get_lof_auth_token():
 
 
 def lof_service_request_headers():
+    #Get the header framed with the lof token 
     status_code, lof_auth_token = get_lof_auth_token()
     if status_code == 200:
         return {
@@ -39,7 +41,9 @@ def lof_service_request_headers():
 class HealthGorillaTokenService:
 
     def get_bearer_token(self):
+        #Get HG token
         response = requests.post(BASE_URL + '/hg/token/', json={}, headers=lof_service_request_headers())
+
         if response.status_code == 200:
             return response.json()['access_token']
         else:
@@ -59,7 +63,10 @@ class IMONLPService:
 
 
 if __name__ == '__main__':
+    #    token = HealthGorillaTokenService().get_bearer_token()
+    # To get HG token, we need the LOF token first which is got using the client id and client secret
     token = lof_service_request_headers()
+    print(token)
     print('LoF Services verified successfully')
 
     # nlp_service = IMONLPService()
