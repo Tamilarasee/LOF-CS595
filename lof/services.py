@@ -62,6 +62,58 @@ class IMONLPService:
             raise Exception(f"Failed to get Retrieve IMO Tokens: {response.status_code}")
 
 
+class IMONormalizeService:
+
+    def normalize_text(self, entities, domain):
+        json_data = {
+            "entities": entities,
+            "domain": domain,
+            "match_field": "input_term",
+            "input_code_system": "",
+            "threshold": 0
+        }
+        response = requests.post(BASE_URL + '/imo/normalize', json=json_data, headers=lof_service_request_headers())
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Failed to Normalize Text: {response.status_code} : {response.json()['message']}")
+            raise Exception(f"Failed to Normalize Text: {response.status_code}")
+
+
+class FDBService:
+
+    def get_drug_info(self, drug_name):
+        response = requests.get(BASE_URL + '/fdb/smart-search', params={'name': drug_name},
+                                headers=lof_service_request_headers())
+
+        response_json = response.json()
+        id = response_json['data']['best_match']['id']
+        response = requests.get(BASE_URL + f'/fdb/meducation/content', params={'code': id},
+                                headers=lof_service_request_headers())
+
+        if response.status_code == 200:
+            response_json = response.json()
+            name = response_json['title']
+            uses = response_json['content']['uses']
+            instructions = response_json['content']['instructions']
+            cautions = response_json['content']['cautions']
+            sideEffects = response_json['content']['sideEffects']
+            extra = response_json['content']['extra']
+            disclaimer = response_json['content']['disclaimer']
+
+            return {
+                'name': name,
+                'uses': uses,
+                'instructions': instructions,
+                'caution': cautions,
+                'side_effects': sideEffects,
+                'extra': extra,
+                'disclaimer': disclaimer
+            }
+        else:
+            print(f"Failed to get FDB drug info: {response.status_code} : {response.json()['message']}")
+            raise Exception(f"Failed to get FDB drug info: {response.status_code}")
+        
 if __name__ == '__main__':
     #    token = HealthGorillaTokenService().get_bearer_token()
     # To get HG token, we need the LOF token first which is got using the client id and client secret
